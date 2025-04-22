@@ -1,16 +1,15 @@
 "use client"
 
 import type React from "react"
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { Input } from "@/components/ui/input"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
 import { ArrowUpDown, Pencil, Download, Columns } from "lucide-react"
+import BulkUpdateDialog, { type BulkUpdateData } from "./BulkUpdateDialog"
 
 interface Service {
   id: string
@@ -27,6 +26,8 @@ interface Service {
   incompletePlan: boolean
   remediationExpired: boolean
   invalidSelection: boolean
+  sensitivityTier: string
+  techCyberReviewStatus: boolean
 }
 
 interface ColumnDefinition {
@@ -63,24 +64,25 @@ const ServiceTable: React.FC<ServiceTableProps> = ({
   onBulkUpdate,
   onDownload,
 }) => {
-  const [bulkUpdateRisk, setBulkUpdateRisk] = useState("")
-  const [bulkUpdatePlan, setBulkUpdatePlan] = useState("")
+  const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false)
   const [showColumnSelector, setShowColumnSelector] = useState(false)
   const columnSelectorRef = useRef<HTMLDivElement>(null)
 
   // Define all possible columns
   const allColumns: ColumnDefinition[] = [
     { key: "id", label: "Service CI", sortable: true, filterable: true },
-    { key: "name", label: "Service Name", sortable: true, filterable: true },
+    { key: "name", label: "ServiceName", sortable: true, filterable: true },
     { key: "division", label: "Division", sortable: true, filterable: true },
     { key: "serviceOwner", label: "Service Owner", sortable: true, filterable: true },
     { key: "serviceManager", label: "Service Manager", sortable: true, filterable: true },
-    { key: "category", label: "Category", sortable: true, filterable: true },
+    { key: "category", label: "Critical/SaaS", sortable: true, filterable: true },
     { key: "risk", label: "Business Risk", sortable: true, filterable: true },
-    { key: "eosDate", label: "EoS Date", sortable: true, filterable: true },
-    { key: "rasScore", label: "RAS Score", sortable: true, filterable: true },
+    // Removed EoS Date column
+    { key: "rasScore", label: "Risk Score", sortable: true, filterable: true },
     { key: "plan", label: "Remediation Plan", sortable: true, filterable: true },
     { key: "residualScore", label: "Residual Score", sortable: true, filterable: true },
+    { key: "sensitivityTier", label: "Sensitivity Tier", sortable: true, filterable: true },
+    { key: "techCyberReviewStatus", label: "Tech & Cyber Review Status", sortable: true, filterable: true },
     { key: "incompletePlan", label: "Incomplete Plan", sortable: true, filterable: true },
     { key: "remediationExpired", label: "Remediation Expired", sortable: true, filterable: true },
     { key: "invalidSelection", label: "Invalid Selection", sortable: true, filterable: true },
@@ -89,7 +91,12 @@ const ServiceTable: React.FC<ServiceTableProps> = ({
   // State to track visible columns
   const [visibleColumns, setVisibleColumns] = useState<string[]>(
     allColumns
-      .filter((col) => !["incompletePlan", "remediationExpired", "invalidSelection"].includes(col.key.toString()))
+      .filter(
+        (col) =>
+          !["incompletePlan", "remediationExpired", "invalidSelection", "techCyberReviewStatus", "eosDate"].includes(
+            col.key.toString(),
+          ),
+      )
       .map((col) => col.key.toString()),
   )
 
@@ -110,17 +117,18 @@ const ServiceTable: React.FC<ServiceTableProps> = ({
     }
   }, [columnSelectorRef])
 
-  const handleBulkUpdate = async () => {
-    // Implement the bulk update logic here
-    console.log("Bulk update:", { selectedItems, bulkUpdateRisk, bulkUpdatePlan })
+  const handleBulkUpdate = async (data: BulkUpdateData) => {
+    // Here you would typically send the updated data to your backend
+    console.log("Bulk update data:", {
+      selectedItems,
+      ...data,
+    })
+
     // Call the parent's onBulkUpdate
     await onBulkUpdate()
-    // Reset local state
-    setBulkUpdateRisk("")
-    setBulkUpdatePlan("")
   }
 
-  const toggleColumnVisibility = (columnKey: string) => {
+  const toggleColumnVisibility = useCallback((columnKey: string) => {
     setVisibleColumns((prev) => {
       if (prev.includes(columnKey)) {
         // Don't allow removing all columns
@@ -130,12 +138,28 @@ const ServiceTable: React.FC<ServiceTableProps> = ({
         return [...prev, columnKey]
       }
     })
-  }
+  }, [])
 
   // Helper function to format boolean values for display
   const formatBooleanValue = (value: boolean): string => {
     return value ? "Yes" : "No"
   }
+
+  // Memoize the checkbox change handler to prevent re-renders
+  const handleColumnCheckChange = useCallback(
+    (columnKey: string, checked: boolean) => {
+      if (checked) {
+        if (!visibleColumns.includes(columnKey)) {
+          toggleColumnVisibility(columnKey)
+        }
+      } else {
+        if (visibleColumns.includes(columnKey) && visibleColumns.length > 1) {
+          toggleColumnVisibility(columnKey)
+        }
+      }
+    },
+    [visibleColumns, toggleColumnVisibility],
+  )
 
   return (
     <div className="bg-white p-4 rounded-lg shadow-md overflow-x-auto">
@@ -150,47 +174,14 @@ const ServiceTable: React.FC<ServiceTableProps> = ({
           </Button>
         </div>
         <div className="flex items-center space-x-4">
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm" disabled={selectedItems.length === 0}>
-                Bulk Update ({selectedItems.length})
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Bulk Update Services</DialogTitle>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="bulk-risk" className="text-right">
-                    Business Risk
-                  </Label>
-                  <Select value={bulkUpdateRisk} onValueChange={setBulkUpdateRisk}>
-                    <SelectTrigger className="col-span-3">
-                      <SelectValue placeholder="Select risk level" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Low">Low</SelectItem>
-                      <SelectItem value="Medium">Medium</SelectItem>
-                      <SelectItem value="High">High</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="bulk-plan" className="text-right">
-                    Remediation Plan
-                  </Label>
-                  <Input
-                    id="bulk-plan"
-                    value={bulkUpdatePlan}
-                    onChange={(e) => setBulkUpdatePlan(e.target.value)}
-                    className="col-span-3"
-                  />
-                </div>
-              </div>
-              <Button onClick={handleBulkUpdate}>Update Services</Button>
-            </DialogContent>
-          </Dialog>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={selectedItems.length === 0}
+            onClick={() => setBulkUpdateOpen(true)}
+          >
+            Bulk Update ({selectedItems.length})
+          </Button>
 
           {/* Simple Column Selector Dropdown */}
           <div className="relative">
@@ -206,19 +197,28 @@ const ServiceTable: React.FC<ServiceTableProps> = ({
               >
                 <h4 className="font-medium text-sm mb-2">Toggle Columns</h4>
                 <div className="space-y-2">
-                  {allColumns.map((column) => (
-                    <div key={column.key.toString()} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`column-${column.key}`}
-                        checked={visibleColumns.includes(column.key.toString())}
-                        onCheckedChange={() => toggleColumnVisibility(column.key.toString())}
-                        disabled={visibleColumns.length === 1 && visibleColumns.includes(column.key.toString())}
-                      />
-                      <Label htmlFor={`column-${column.key}`} className="text-sm cursor-pointer">
-                        {column.label}
-                      </Label>
-                    </div>
-                  ))}
+                  {allColumns.map((column) => {
+                    const columnKey = column.key.toString()
+                    // Skip the eosDate column entirely
+                    if (columnKey === "eosDate") return null
+
+                    const isChecked = visibleColumns.includes(columnKey)
+                    const isDisabled = isChecked && visibleColumns.length === 1
+
+                    return (
+                      <div key={columnKey} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`column-${columnKey}`}
+                          checked={isChecked}
+                          onCheckedChange={(checked) => handleColumnCheckChange(columnKey, checked as boolean)}
+                          disabled={isDisabled}
+                        />
+                        <Label htmlFor={`column-${columnKey}`} className="text-sm cursor-pointer">
+                          {column.label}
+                        </Label>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}
@@ -231,7 +231,10 @@ const ServiceTable: React.FC<ServiceTableProps> = ({
           <TableRow className="bg-theme-100">
             {/* Checkbox column */}
             <TableHead className="w-[50px]">
-              <Checkbox checked={selectedItems.length === services.length} onCheckedChange={onSelectAll} />
+              <Checkbox
+                checked={selectedItems.length === services.length && services.length > 0}
+                onCheckedChange={onSelectAll}
+              />
             </TableHead>
 
             {/* Dynamic columns */}
@@ -313,9 +316,16 @@ const ServiceTable: React.FC<ServiceTableProps> = ({
           )}
         </TableBody>
       </Table>
+
+      {/* Use the new BulkUpdateDialog component */}
+      <BulkUpdateDialog
+        open={bulkUpdateOpen}
+        onOpenChange={setBulkUpdateOpen}
+        selectedItems={selectedItems}
+        onBulkUpdate={handleBulkUpdate}
+      />
     </div>
   )
 }
 
 export default ServiceTable
-

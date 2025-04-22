@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import Filters from "./Filters"
 import ServiceTable from "./ServiceTable"
 import servicesData from "@/data/services.json"
@@ -17,9 +18,16 @@ interface Service {
   rasScore: string
   plan: string
   residualScore: string
+  incompletePlan: boolean
+  remediationExpired: boolean
+  invalidSelection: boolean
+  sensitivityTier: string
+  techCyberReviewStatus: boolean
 }
 
 export default function AOP() {
+  const searchParams = useSearchParams()
+
   // State for all services and filtered services
   const [allServices] = useState<Service[]>(servicesData.services)
 
@@ -46,6 +54,11 @@ export default function AOP() {
     rasScore: ["all"],
     plan: ["all"],
     residualScore: ["all"],
+    sensitivityTier: ["all"],
+    techCyberReviewStatus: ["all"],
+    incompletePlan: ["all"],
+    remediationExpired: ["all"],
+    invalidSelection: ["all"],
   })
 
   // State for table filters (applied in real-time)
@@ -61,10 +74,118 @@ export default function AOP() {
     rasScore: "",
     plan: "",
     residualScore: "",
+    sensitivityTier: "",
+    techCyberReviewStatus: "",
+    incompletePlan: "",
+    remediationExpired: "",
+    invalidSelection: "",
   })
 
   const [selectedItems, setSelectedItems] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [initialFilterApplied, setInitialFilterApplied] = useState(false)
+
+  // Read query parameters and set initial filters only once
+  useEffect(() => {
+    if (initialFilterApplied) return
+
+    const newDropdownFilters = { ...dropdownFilters }
+    let hasQueryParams = false
+
+    // Check for rasScore filter
+    const rasScore = searchParams.get("rasScore")
+    if (rasScore) {
+      newDropdownFilters.rasScore = [rasScore]
+      hasQueryParams = true
+    }
+
+    // Check for residualScore filter
+    const residualScore = searchParams.get("residualScore")
+    if (residualScore) {
+      newDropdownFilters.residualScore = [residualScore]
+      hasQueryParams = true
+    }
+
+    // Check for boolean filters
+    const incompletePlan = searchParams.get("incompletePlan")
+    if (incompletePlan === "true") {
+      newDropdownFilters.incompletePlan = ["true"]
+      hasQueryParams = true
+    }
+
+    const remediationExpired = searchParams.get("remediationExpired")
+    if (remediationExpired === "true") {
+      newDropdownFilters.remediationExpired = ["true"]
+      hasQueryParams = true
+    }
+
+    const invalidSelection = searchParams.get("invalidSelection")
+    if (invalidSelection === "true") {
+      newDropdownFilters.invalidSelection = ["true"]
+      hasQueryParams = true
+    }
+
+    // Check for new boolean filters
+    const techCyberReviewStatus = searchParams.get("techCyberReviewStatus")
+    if (techCyberReviewStatus === "true") {
+      newDropdownFilters.techCyberReviewStatus = ["true"]
+      hasQueryParams = true
+    }
+
+    // Check for sensitivityTier filter
+    const sensitivityTier = searchParams.get("sensitivityTier")
+    if (sensitivityTier) {
+      newDropdownFilters.sensitivityTier = [sensitivityTier]
+      hasQueryParams = true
+    }
+
+    if (hasQueryParams) {
+      setDropdownFilters(newDropdownFilters)
+      // Apply filters immediately if we have query params
+      applyFiltersFromParams(newDropdownFilters)
+      setInitialFilterApplied(true)
+    }
+  }, [searchParams, initialFilterApplied])
+
+  // Apply filters from URL parameters (only called once)
+  const applyFiltersFromParams = useCallback(
+    (filters: Record<string, string[]>) => {
+      setIsLoading(true)
+
+      // Apply dropdown filters to get filtered services
+      let result = [...allServices]
+
+      // Apply dropdown filters
+      Object.entries(filters).forEach(([key, values]) => {
+        if (values.length > 0 && !values.includes("all")) {
+          if (
+            key === "incompletePlan" ||
+            key === "remediationExpired" ||
+            key === "invalidSelection" ||
+            key === "techCyberReviewStatus"
+          ) {
+            // Handle boolean filters
+            const boolValue = values[0] === "true"
+            result = result.filter((service) => service[key as keyof Service] === boolValue)
+          } else {
+            // Handle string filters
+            result = result.filter((service) =>
+              values.some((value) =>
+                String(service[key as keyof Service])
+                  .toLowerCase()
+                  .includes(value.toLowerCase()),
+              ),
+            )
+          }
+        }
+      })
+
+      // Update dropdown filtered services
+      setDropdownFilteredServices(result)
+      setIsLoading(false)
+    },
+    [allServices],
+  )
 
   // Apply dropdown filters when Retrieve button is clicked
   const applyDropdownFilters = useCallback(() => {
@@ -76,13 +197,25 @@ export default function AOP() {
     // Apply dropdown filters
     Object.entries(dropdownFilters).forEach(([key, values]) => {
       if (values.length > 0 && !values.includes("all")) {
-        result = result.filter((service) =>
-          values.some((value) =>
-            String(service[key as keyof Service])
-              .toLowerCase()
-              .includes(value.toLowerCase()),
-          ),
-        )
+        if (
+          key === "incompletePlan" ||
+          key === "remediationExpired" ||
+          key === "invalidSelection" ||
+          key === "techCyberReviewStatus"
+        ) {
+          // Handle boolean filters
+          const boolValue = values[0] === "true"
+          result = result.filter((service) => service[key as keyof Service] === boolValue)
+        } else {
+          // Handle string filters
+          result = result.filter((service) =>
+            values.some((value) =>
+              String(service[key as keyof Service])
+                .toLowerCase()
+                .includes(value.toLowerCase()),
+            ),
+          )
+        }
       }
     })
 
@@ -215,4 +348,3 @@ export default function AOP() {
     </div>
   )
 }
-

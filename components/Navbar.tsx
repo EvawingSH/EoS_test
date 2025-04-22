@@ -14,6 +14,12 @@ const navItems = [
 export default function Navbar() {
   const pathname = usePathname()
 
+  // Check if the current path is the edit page
+  const isEditPage = pathname.startsWith("/edit/")
+
+  // If it's an edit page, we want to highlight the AOP nav item
+  const activeHref = isEditPage ? "/aop" : pathname
+
   return (
     <nav className="w-72 bg-gray-100 p-6">
       <h1 className="text-2xl font-bold mb-8 text-black">EoS Software Management</h1>
@@ -23,10 +29,12 @@ export default function Navbar() {
             <Link
               href={item.href}
               className={`flex items-center space-x-4 hover:bg-theme-100 p-3 rounded-lg relative ${
-                pathname === item.href ? "bg-theme-100" : ""
+                activeHref === item.href ? "bg-theme-100" : ""
               }`}
             >
-              {pathname === item.href && <div className="absolute left-0 top-0 bottom-0 w-1 bg-theme-500"></div>}
+              {activeHref === item.href && (
+                <div className="absolute left-0 top-0 bottom-0 w-2 bg-theme-500 rounded-l-lg"></div>
+              )}
               <item.icon className="w-6 h-6" />
               <span>{item.label}</span>
             </Link>
@@ -36,4 +44,3 @@ export default function Navbar() {
     </nav>
   )
 }
-
